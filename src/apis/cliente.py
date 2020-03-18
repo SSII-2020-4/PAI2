@@ -4,7 +4,7 @@ from functools import wraps
 from flask import request
 from flask_restplus import Namespace, Resource, fields
 
-from core.file_utils import FileUtils
+
 
 authorizations = {
     'apikey': {
@@ -55,3 +55,15 @@ class Files(Resource):
     @token_required
     def get(self):
         return {"hola": "mundo"}
+
+    
+    @api.doc(description="Manda un mensaje sobre una transacción",
+             security='apikey',
+             responses={
+                 200: "El mensaje ha sido recibido con éxito",
+                 500: "La integridad del mensaje se ha visto comprometida"
+             })
+    def post(self):
+        return {"hola": "mundo"}
+
+

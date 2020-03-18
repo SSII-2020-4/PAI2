@@ -4,7 +4,6 @@ from functools import wraps
 from flask import request
 from flask_restplus import Namespace, Resource, fields
 
-from core.file_utils import FileUtils
 
 authorizations = {
     'apikey': {
