@@ -1,5 +1,8 @@
 import os
+import requests
+import json
 from functools import wraps
+from core import client_utils
 
 from flask import request
 from flask_restplus import Namespace, Resource, fields
@@ -19,6 +22,13 @@ api = Namespace(
     description='Client simulation',
     # authorizations=authorizations
 )
+
+model_message = api.model(
+    'Message', {
+        'message': fields.String(
+            required=True,
+            description="Message to send (Cuenta origen, Cuenta destino, Cantidad transferida)"),
+    })
 
 
 # TOKEN check
@@ -56,7 +66,7 @@ class Files(Resource):
     def get(self):
         return {"hola": "mundo"}
 
-    
+    @api.expect(model_message)
     @api.doc(description="Manda un mensaje sobre una transacción",
              security='apikey',
              responses={
@@ -64,6 +74,23 @@ class Files(Resource):
                  500: "La integridad del mensaje se ha visto comprometida"
              })
     def post(self):
-        return {"hola": "mundo"}
+        utils = client_utils.ClientUtils()
+        message = request.json["message"]
+
+        #Simulación de parámetros. Corregir cuando se implemente 
+        nonce = utils.gen_nonce()[0]
+        private_key = 123456
+
+
+        MAC = utils.calculate_MAC(nonce, message, private_key)
+        data = {
+            "message" : message,
+            "MAC" : MAC,
+            "nonce" : nonce
+        }
+
+        r = requests.post("http://127.0.0.1:5000/Server/", data=json.dumps(data), headers={'content-type': 'application/json'})
+        
+        return r.text
 
 
