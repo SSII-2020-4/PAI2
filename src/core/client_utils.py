@@ -15,7 +15,7 @@ class ClientUtils():
     Class for client
     """
 
-    def calculate_MAC(key : bytes, message : bytes, nonce : bytes, algorithm=hashlib.sha256):
+    def calculate_MAC(self,key : bytes, message : bytes, nonce : bytes, algorithm=hashlib.sha256):
         """
         Calcula el MAC de un mensaje y el nonce, pasando la clave como parámetros. Estos 3 campos deben ser en bytes.
 
@@ -31,8 +31,23 @@ class ClientUtils():
 
     def gen_nonce(self, length=32):
         """ Generates a random string in hexadecimal with 32 random bytes by default """
-        if(length<32):
-            res= 'Invalid nonce length', 400
+        if(length<1):
+            res= {"message":'Invalid nonce length'}, 400
         else:
-            res= secrets.token_hex(floor(length)), 200
+            res= {"nonce":secrets.token_hex(floor(length))}, 200
+            if(not os.path.isfile("client-nonces.txt")):
+                f = open("client-nonces.txt","w")
+            f = open("client-nonces.txt","r")
+            linea = f.readline()
+            aux = True
+            while linea != "":
+                if(linea == res[0]["nonce"]+"\n"):
+                    aux = False
+                    break
+                linea = f.readline()
+            if(aux):
+                f = open("client-nonces.txt","a")
+                f.write(res[0]["nonce"]+"\n")
+            else:
+                res = {"message":'Used nonce'}, 401
         return res
