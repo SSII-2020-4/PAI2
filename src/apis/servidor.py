@@ -1,5 +1,6 @@
 import os
 from functools import wraps
+from core import server_utils
 
 from flask import request
 from flask_restplus import Namespace, Resource, fields
@@ -18,6 +19,19 @@ api = Namespace(
     description='Server simulation',
     # authorizations=authorizations
 )
+
+model_message_from_client = api.model(
+    'Data', {
+        'message': fields.String(
+            required=True,
+            description="Message from the client"),
+        'MAC': fields.String(
+            required=True,
+            description="Message Authentication Code from the client"),
+        'nonce': fields.Integer(
+            required=True,
+            description="Random number used once"),
+    })
 
 
 # TOKEN check
@@ -51,6 +65,18 @@ class Files(Resource):
                  200: "Files and hashes",
                  500: "HIDS failure. Please populate files"
              })
-    @token_required
-    def get(self):
-        return {"hola": "mundo"}
+    @api.expect(model_message_from_client)
+    def post(self):
+        utils = server_utils.ServerUtils()
+        message = request.json["message"]
+
+        #Simulación de parámetros. Corregir cuando se implemente
+        nonce = request.json["nonce"]
+        private_key = 123456
+
+        MAC = request.json["MAC"]
+        MAC_calculated = utils.calculate_MAC(nonce, message, private_key)
+
+        integrity_violated = str(MAC) != str(MAC_calculated)
+
+        return utils.get_transference_rate(integrity_violated, message)

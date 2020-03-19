@@ -15,7 +15,7 @@ class ClientUtils():
     Class for client
     """
 
-    def calculate_MAC(key : bytes, message : bytes, nonce : bytes, algorithm=hashlib.sha256):
+    def calculate_MAC(self, key, message, nonce, algorithm=hashlib.sha256):
         """
         Calcula el MAC de un mensaje y el nonce, pasando la clave como parámetros. Estos 3 campos deben ser en bytes.
 
@@ -24,8 +24,14 @@ class ClientUtils():
         nonce -- Número aleatorio único entre el cliente y el servidor 
         algorithm -- (Opcional) Algoritmo a usar para el cálculo del MAC
         """
-        digest_maker = hmac.new(key, msg=message, digestmod=algorithm)
-        digest_maker.update(nonce)
+
+
+        key_bytes = str.encode(str(key))
+        message_bytes = str.encode(str(message))
+        nonce_bytes = str.encode(str(nonce))
+
+        digest_maker = hmac.new(key_bytes, msg=message_bytes, digestmod=algorithm)
+        digest_maker.update(nonce_bytes)
         digest_maker.hexdigest()
         return digest_maker.hexdigest()
 
