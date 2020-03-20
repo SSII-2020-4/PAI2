@@ -70,13 +70,13 @@ class Files(Resource):
         utils = server_utils.ServerUtils()
         message = request.json["message"]
 
-        #Simulación de parámetros. Corregir cuando se implemente
+        # Simulación de parámetros. Corregir cuando se implemente
         nonce = request.json["nonce"]
         private_key = 123456
 
         MAC = request.json["MAC"]
-        MAC_calculated = utils.calculate_MAC(nonce, message, private_key)
+        mac_calculated = utils.calculate_mac(nonce, message, private_key)
 
-        integrity_violated = str(MAC) != str(MAC_calculated)
+        integrity_violated = str(MAC) != str(mac_calculated)
 
         return utils.get_transference_rate(integrity_violated, message)

@@ -3,11 +3,16 @@ import hmac
 import json
 import os
 import secrets
-import shutil
-import datetime
 from datetime import datetime
-from functools import reduce
 from math import floor
+
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.asymmetric import dh
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+from cryptography.hazmat.primitives.serialization import (Encoding,
+                                                          ParameterFormat,
+                                                          load_pem_parameters)
 
 
 class ServerUtils():
@@ -15,16 +20,22 @@ class ServerUtils():
     Class for server
     """
 
-    def calculate_mac(self, key: bytes, message: bytes, nonce: bytes, algorithm=hashlib.sha256):
+    def calculate_mac(
+        self,
+        key: bytes,
+        message: bytes,
+        nonce: bytes,
+        algorithm=hashlib.sha256
+    ):
         """
-        Calcula el MAC de un mensaje y el nonce, pasando la clave como parámetros. Estos 3 campos deben ser en bytes.
+        Calcula el MAC de un mensaje y el nonce, pasando la clave como
+        parámetros. Estos 3 campos deben ser en bytes.
 
         key -- Clave compartida entre el cliente y el servidor
         message -- Mensaje enviado por el cliente
-        nonce -- Número aleatorio único entre el cliente y el servidor 
+        nonce -- Número aleatorio único entre el cliente y el servidor
         algorithm -- (Opcional) Algoritmo a usar para el cálculo del MAC
         """
-
         key_bytes = str.encode(str(key))
         message_bytes = str.encode(str(message))
         nonce_bytes = str.encode(str(nonce))
@@ -37,13 +48,20 @@ class ServerUtils():
 
     def get_transference_rate(self, is_integrity_violated: bool, message: str):
         """
-        Devuelve la tasa de transferencia mensajes_enviados_integros / mensajes_totales. Además, acutaliza el archivo de logs.
+        Devuelve la tasa de transferencia
+        mensajes_enviados_integros / mensajes_totales.
+        Además, acutaliza el archivo de logs.
 
-        is_integrity_violated -- Boolean que determina si la integridad del mensaje ha sido violada
+        is_integrity_violated -- Boolean que determina si la integridad
+        del mensaje ha sido violada
         message -- Mensaje enviado por el cliente
         """
 
-        with open(os.path.join(os.getcwd(), "files", ".transference_rate_backup"), "r") as file:
+        with open(os.path.join(
+            os.getcwd(),
+            "files",
+            ".transference_rate_backup"
+        ), "r") as file:
             loaded_rate = json.load(file)
 
         try:
@@ -52,46 +70,111 @@ class ServerUtils():
             if (not is_integrity_violated):
                 loaded_rate["success"] = loaded_rate["success"] + 1
             else:
-                with open(os.path.join(os.getcwd(), "files", "logs.log"), "a+", encoding="utf-8") as file:
-                    file.write("[" + datetime.now().strftime("%d/%m/%Y %H:%M:%S") +
-                               "] - Se ha violado la integridad del mensaje: " + message + "\n")
+                with open(
+                        os.path.join(
+                            os.getcwd(),
+                            "files",
+                            "logs.log"
+                        ), "a+", encoding="utf-8"
+                ) as file:
+
+                    file.write(
+                        "[" + datetime.now().strftime("%d/%m/%Y %H:%M:%S") +
+                        "] - Se ha violado la integridad del mensaje: " +
+                        message + "\n"
+                    )
 
             rate = loaded_rate["success"] / loaded_rate["total"] * 100
         except ZeroDivisionError:
             rate = 0
         finally:
-            with open(os.path.join(os.getcwd(), "files", ".transference_rate_backup"), "w") as file:
+            with open(
+                    os.path.join(
+                        os.getcwd(),
+                        "files",
+                        ".transference_rate_backup"
+                    ), "w"
+            ) as file:
                 file.write(json.dumps(loaded_rate))
 
         if (not is_integrity_violated):
-            res = "Se ha mantenido la integridad del mensaje. Tasa de acierto en la transferencia: " + \
+            res = "Se ha mantenido la integridad del mensaje. " + \
+                "Tasa de acierto en la transferencia: " + \
                 str(rate) + "%", 200
         else:
-            res = "La integridad del mensaje se ha visto comprometido. Tasa de acierto en la transferencia: " + \
-                str(rate) + "%", 500
+            res = "La integridad del mensaje se ha visto comprometido. " + \
+                "Tasa de acierto en la transferencia: " + \
+                str(rate) + " %", 500
 
         return res
 
     def gen_nonce(self, length=32):
-        """ Generates a random string in hexadecimal with 32 random bytes by default """
+        """
+        Generates a random string in hexadecimal with 32 random
+        bytes by default
+        """
         if(length < 32):
             res = {"message": 'Invalid nonce length'}, 400
         else:
             res = {"nonce": secrets.token_hex(floor(length))}, 200
             nonces_file = "server-nonces.txt"
-            if(not os.path.isfile(nonces_file)):
-                f = open(nonces_file, "w")
-            f = open(nonces_file, "r")
-            linea = f.readline()
-            aux = True
-            while linea != "":
-                if(linea == res[0]["nonce"]+"\n"):
-                    aux = False
-                    break
+            if not os.path.exists(nonces_file):
+                os.mknod(nonces_file)
+            with open(nonces_file, 'r') as f:
                 linea = f.readline()
-            if(aux):
-                f = open(nonces_file, "a")
-                f.write(res[0]["nonce"]+"\n")
-            else:
-                res = {"message": 'Used nonce'}, 401
+                aux = True
+                while linea != "":
+                    if(linea == res[0]["nonce"]+"\n"):
+                        aux = False
+                        break
+                    linea = f.readline()
+                if(aux):
+                    f = open(nonces_file, "a")
+                    f.write(res[0]["nonce"]+"\n")
+                else:
+                    res = {"message": 'Used nonce'}, 401
         return res
+
+
+class EDH():
+    def __init__(self):
+        self.__generate_parameters()
+
+    def __generate_parameters(self):
+        param_file = 'dh.pem'
+        if not os.path.isfile(param_file):
+            self.__parameters = dh.generate_parameters(
+                generator=2,
+                key_size=2048,
+                backend=default_backend()
+            )
+            dh_pem = self.__parameters.parameter_bytes(
+                Encoding.PEM,
+                ParameterFormat.PKCS3
+            )
+            with open(param_file, 'wb') as output:
+                output.write(dh_pem)
+        else:
+            with open(param_file, 'rb') as binary_file:
+                pem_data = binary_file.read()
+                self.__parameters = load_pem_parameters(
+                    pem_data,
+                    default_backend()
+                )
+        self.__private_key = self.__parameters.generate_private_key()
+
+    def get_public_key(self):
+        return self.__private_key.public_key()
+
+    def get_shared_key(self, public_key):
+        return self.__private_key.exchange(public_key)
+
+    def get_full_key(self, shared_key):
+        full_key = HKDF(
+            algorithm=hashes.SHA256(),
+            length=32,
+            salt=None,
+            info=None,
+            backend=default_backend()
+        ).derive(shared_key)
+        return full_key

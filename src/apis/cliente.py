@@ -2,11 +2,10 @@ import os
 import requests
 import json
 from functools import wraps
-from core import client_utils
+from core.client_utils import ClientUtils
 
 from flask import request
 from flask_restplus import Namespace, Resource, fields
-
 
 
 authorizations = {
@@ -27,7 +26,8 @@ model_message = api.model(
     'Message', {
         'message': fields.String(
             required=True,
-            description="Message to send (Cuenta origen, Cuenta destino, Cantidad transferida)"),
+            description="Message to send (Cuenta origen, Cuenta destino, \
+                Cantidad transferida)"),
     })
 
 
@@ -53,6 +53,9 @@ def token_required(f):
     return decorated
 
 
+base_url = "http://127.0.0.1:5000/"
+
+
 @api.route("/")
 # @api.response(401, "Not Authorized")
 class Files(Resource):
@@ -74,23 +77,26 @@ class Files(Resource):
                  500: "La integridad del mensaje se ha visto comprometida"
              })
     def post(self):
-        utils = client_utils.ClientUtils()
+        client = ClientUtils()
         message = request.json["message"]
 
-        #Simulación de parámetros. Corregir cuando se implemente 
-        nonce = utils.gen_nonce()[0]
-        private_key = 123456
+        # Intercambio de claves
 
+        # Simulación de parámetros. Corregir cuando se implemente
+        nonce = client.gen_nonce()[0]
+        full_key = 123456
 
-        MAC = utils.calculate_mac(nonce, message, private_key)
+        MAC = client.calculate_mac(nonce, message, full_key)
         data = {
-            "message" : message,
-            "MAC" : MAC,
-            "nonce" : nonce
+            "message": message,
+            "MAC": MAC,
+            "nonce": nonce
         }
 
-        r = requests.post("http://127.0.0.1:5000/Server/", data=json.dumps(data), headers={'content-type': 'application/json'})
-        
+        r = requests.post(
+            f"{base_url}Server/",
+            data=json.dumps(data),
+            headers={'content-type': 'application/json'}
+        )
+
         return r.text
-
-

@@ -147,3 +147,6 @@ replicas
 files.json
 hashes.json
 *.pem
+*backup
+*.log*
+src/core/common_utils.py
