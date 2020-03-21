@@ -1,12 +1,12 @@
-import os
-import requests
 import json
+import os
 from functools import wraps
-from core.client_utils import ClientUtils
 
 from flask import request
 from flask_restplus import Namespace, Resource, fields
 
+from core.client_utils import ClientUtils, EDH
+from core.common_utils import Utils
 
 authorizations = {
     'apikey': {
@@ -17,18 +17,40 @@ authorizations = {
 }
 
 api = Namespace(
-    'Client',
-    description='Client simulation',
+    'client',
+    description='Simulación del cliente',
     # authorizations=authorizations
+)
+
+model_public_key = api.model(
+    'Public Key', {
+        'public_key': fields.String(
+            required=True,
+            description="Clave pública del servidor"),
+    }
+)
+
+model_shared_key = api.model(
+    'Shared Key', {
+        'shared_key': fields.String(
+            required=True,
+            description="Clave compartida del servidor"),
+    }
 )
 
 model_message = api.model(
     'Message', {
-        'message': fields.String(
+        'cuenta_origen': fields.String(
             required=True,
-            description="Message to send (Cuenta origen, Cuenta destino, \
-                Cantidad transferida)"),
-    })
+            description="Cuenta origen"),
+        'cuenta_destino': fields.String(
+            required=True,
+            description="Cuenta destino"),
+        'cantidad': fields.Integer(
+            required=True,
+            description="Cantidad a transferir"),
+    }
+)
 
 
 # TOKEN check
@@ -53,50 +75,57 @@ def token_required(f):
     return decorated
 
 
-base_url = "http://127.0.0.1:5000/"
+utils = Utils()
+edh = EDH()
 
 
-@api.route("/")
+@api.route("/public_key")
+@api.hide
 # @api.response(401, "Not Authorized")
-class Files(Resource):
-    @api.doc(description="Get all files and hashes",
+class PublicKeyTransfer(Resource):
+    @api.doc(description="Clave pública",
              security='apikey',
              responses={
-                 200: "Files and hashes",
-                 500: "HIDS failure. Please populate files"
+                 200: "Clave pública generada",
              })
-    @token_required
-    def get(self):
-        return {"hola": "mundo"}
+    @api.expect(model_public_key)
+    def post(self):
+        public_key = edh.get_public_key()
+        return public_key.decode('ascii')
 
+
+@api.route('/message')
+class Message(Resource):
     @api.expect(model_message)
     @api.doc(description="Manda un mensaje sobre una transacción",
              security='apikey',
              responses={
                  200: "El mensaje ha sido recibido con éxito",
+                 405: "Método no permitido",
                  500: "La integridad del mensaje se ha visto comprometida"
              })
     def post(self):
         client = ClientUtils()
-        message = request.json["message"]
+        message = str(request.json)
 
-        # Intercambio de claves
+        # Intercambio de
+        full_key = edh.exchange_keys()
 
-        # Simulación de parámetros. Corregir cuando se implemente
+        # Simulación de parámetros.
         nonce = client.gen_nonce()[0]
-        full_key = 123456
 
         MAC = client.calculate_mac(nonce, message, full_key)
         data = {
             "message": message,
             "MAC": MAC,
-            "nonce": nonce
+            "nonce": nonce,
+            "shared_key": edh.shared_key
         }
 
-        r = requests.post(
-            f"{base_url}Server/",
-            data=json.dumps(data),
-            headers={'content-type': 'application/json'}
+        response = utils.api_request(
+            "post",
+            "server/message",
+            data=data
         )
 
-        return r.text
+        return response

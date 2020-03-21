@@ -1,10 +1,10 @@
 import os
 from functools import wraps
-from core import server_utils
 
-from flask import request
+from flask import g, request
 from flask_restplus import Namespace, Resource, fields
 
+from core.server_utils import EDH, ServerUtils
 
 authorizations = {
     'apikey': {
@@ -15,9 +15,25 @@ authorizations = {
 }
 
 api = Namespace(
-    'Server',
-    description='Server simulation',
+    'server',
+    description='Simulación del servidor',
     # authorizations=authorizations
+)
+
+model_public_key = api.model(
+    'Public Key', {
+        'public_key': fields.String(
+            required=True,
+            description="Clave pública del cliente"),
+    }
+)
+
+model_shared_key = api.model(
+    'Shared Key', {
+        'shared_key': fields.String(
+            required=True,
+            description="Clave compartida del cliente"),
+    }
 )
 
 model_message_from_client = api.model(
@@ -31,7 +47,8 @@ model_message_from_client = api.model(
         'nonce': fields.Integer(
             required=True,
             description="Random number used once"),
-    })
+    }
+)
 
 
 # TOKEN check
@@ -56,9 +73,51 @@ def token_required(f):
     return decorated
 
 
-@api.route("/")
+server = ServerUtils()
+edh = EDH()
+
+
+@api.route("/public_key")
+@api.hide
 # @api.response(401, "Not Authorized")
-class Files(Resource):
+class PublicKeyTransfer(Resource):
+    @api.doc(description="Clave compartida",
+             security='apikey',
+             responses={
+                 200: "Clave compartida generada",
+             })
+    @api.expect(model_public_key)
+    def post(self):
+        public_key = edh.get_public_key()
+        return public_key.decode('ascii')
+
+
+@api.route("/shared_key")
+@api.hide
+# @api.response(401, "Not Authorized")
+class SharedKeyTransfer(Resource):
+    @api.doc(description="Clave pública",
+             security='apikey',
+             responses={
+                 200: "Clave compartida generada",
+             })
+    @api.expect(model_public_key)
+    def post(self):
+        g._messages = {}
+        client_public_key = request.json['public_key']
+        # Añade las claves al contexto de la api
+        setattr(g, 'client_public_key', client_public_key)
+        setattr(g, 'client_shared_key', request.json['shared_key'])
+        # g._messages["client_public_key"] = client_public_key
+        # g._messages["client_shared_key"] = request.json['shared_key']
+
+        shared_key = edh.get_shared_key(client_public_key)
+        return shared_key, 200
+
+
+@api.route("/message")
+@api.hide
+class Message(Resource):
     @api.doc(description="Get all files and hashes",
              security='apikey',
              responses={
@@ -67,16 +126,19 @@ class Files(Resource):
              })
     @api.expect(model_message_from_client)
     def post(self):
-        utils = server_utils.ServerUtils()
+        server = ServerUtils()
         message = request.json["message"]
 
-        # Simulación de parámetros. Corregir cuando se implemente
+        # Intercambio de claves
+        full_key = edh.get_full_key(request.json["shared_key"])
+        # full_key = 1234
+
+        # Simulación de parámetros.
         nonce = request.json["nonce"]
-        private_key = 123456
 
         MAC = request.json["MAC"]
-        mac_calculated = utils.calculate_mac(nonce, message, private_key)
+        mac_calculated = server.calculate_mac(nonce, message, full_key)
 
         integrity_violated = str(MAC) != str(mac_calculated)
 
-        return utils.get_transference_rate(integrity_violated, message)
+        return server.get_transference_rate(integrity_violated, message)

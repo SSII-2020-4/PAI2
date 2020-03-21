@@ -12,7 +12,11 @@ from cryptography.hazmat.primitives.asymmetric import dh
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives.serialization import (Encoding,
                                                           ParameterFormat,
-                                                          load_pem_parameters)
+                                                          PublicFormat,
+                                                          load_pem_parameters,
+                                                          load_pem_public_key)
+
+from .common_utils import Utils
 
 
 class ServerUtils():
@@ -56,13 +60,27 @@ class ServerUtils():
         del mensaje ha sido violada
         message -- Mensaje enviado por el cliente
         """
-
-        with open(os.path.join(
+        if not os.path.exists("files"):
+            os.mkdir("files")
+        file_backup = os.path.join(
             os.getcwd(),
             "files",
             ".transference_rate_backup"
-        ), "r") as file:
-            loaded_rate = json.load(file)
+        )
+        file_log = os.path.join(
+            os.getcwd(),
+            "files",
+            "logs.log"
+        )
+        if not os.path.exists(file_backup):
+            os.mknod(file_backup)
+        if not os.path.exists(file_log):
+            os.mknod(file_log)
+        with open(file_backup, "r") as file:
+            try:
+                loaded_rate = json.load(file)
+            except Exception:
+                loaded_rate = {"success": 0, "total": 0}
 
         try:
             loaded_rate["total"] = loaded_rate["total"] + 1
@@ -71,11 +89,9 @@ class ServerUtils():
                 loaded_rate["success"] = loaded_rate["success"] + 1
             else:
                 with open(
-                        os.path.join(
-                            os.getcwd(),
-                            "files",
-                            "logs.log"
-                        ), "a+", encoding="utf-8"
+                    file_log,
+                    "a+",
+                    encoding="utf-8"
                 ) as file:
 
                     file.write(
@@ -88,13 +104,7 @@ class ServerUtils():
         except ZeroDivisionError:
             rate = 0
         finally:
-            with open(
-                    os.path.join(
-                        os.getcwd(),
-                        "files",
-                        ".transference_rate_backup"
-                    ), "w"
-            ) as file:
+            with open(file_backup, "w") as file:
                 file.write(json.dumps(loaded_rate))
 
         if (not is_integrity_violated):
@@ -164,12 +174,26 @@ class EDH():
         self.__private_key = self.__parameters.generate_private_key()
 
     def get_public_key(self):
-        return self.__private_key.public_key()
+        public_key = self.__private_key.public_key()
+        return public_key.public_bytes(
+            Encoding.PEM,
+            PublicFormat.SubjectPublicKeyInfo
+        )
 
-    def get_shared_key(self, public_key):
-        return self.__private_key.exchange(public_key)
+    def get_shared_key(self, client_public_key):
+        client_public_key = load_pem_public_key(
+            str.encode(
+                client_public_key.replace('\"', "").replace("\\n", "\n")
+            ),
+            default_backend()
+        )
+
+        return self.__private_key.exchange(client_public_key).hex()
 
     def get_full_key(self, shared_key):
+        shared_key = str.encode(
+            shared_key.replace("\"", "").replace("\n", "")
+        )
         full_key = HKDF(
             algorithm=hashes.SHA256(),
             length=32,

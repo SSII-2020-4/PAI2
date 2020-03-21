@@ -10,7 +10,11 @@ from cryptography.hazmat.primitives.asymmetric import dh
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives.serialization import (Encoding,
                                                           ParameterFormat,
-                                                          load_pem_parameters)
+                                                          PublicFormat,
+                                                          load_pem_parameters,
+                                                          load_pem_public_key)
+
+from .common_utils import Utils
 
 
 class ClientUtils():
@@ -100,12 +104,26 @@ class EDH():
         self.__private_key = self.__parameters.generate_private_key()
 
     def get_public_key(self):
-        return self.__private_key.public_key()
+        public_key = self.__private_key.public_key()
+        return public_key.public_bytes(
+            Encoding.PEM,
+            PublicFormat.SubjectPublicKeyInfo
+        )
 
-    def get_shared_key(self, public_key):
-        return self.__private_key.exchange(public_key)
+    def get_shared_key(self, server_public_key):
+        server_public_key = load_pem_public_key(
+            str.encode(
+                server_public_key.replace('\"', "").replace("\\n", "\n")
+            ),
+            default_backend()
+        )
+        self.shared_key = self.__private_key.exchange(server_public_key).hex()
+        return self.shared_key
 
     def get_full_key(self, shared_key):
+        shared_key = str.encode(
+            shared_key.replace("\"", "").replace("\n", "")
+        )
         full_key = HKDF(
             algorithm=hashes.SHA256(),
             length=32,
@@ -114,3 +132,33 @@ class EDH():
             backend=default_backend()
         ).derive(shared_key)
         return full_key
+
+    def exchange_keys(self):
+        utils = Utils()
+        # Intercambio de claves
+        #################
+        # Clave pública #
+        #################
+        server_public_key = utils.api_request(
+            "post",
+            "server/public_key",
+        )[0]
+
+        ####################
+        # Clave compartida #
+        ####################
+        client_shared_key = self.get_shared_key(server_public_key)
+        data = {
+            "public_key": self.get_public_key().decode('ascii'),
+            "shared_key": client_shared_key,
+        }
+        server_shared_key = utils.api_request(
+            "post",
+            "server/shared_key",
+            data=data
+        )[0]
+
+        ##################
+        # Clave completa #
+        ##################
+        return self.get_full_key(server_shared_key)
