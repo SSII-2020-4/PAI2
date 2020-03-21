@@ -105,12 +105,6 @@ class SharedKeyTransfer(Resource):
     def post(self):
         g._messages = {}
         client_public_key = request.json['public_key']
-        # Añade las claves al contexto de la api
-        setattr(g, 'client_public_key', client_public_key)
-        setattr(g, 'client_shared_key', request.json['shared_key'])
-        # g._messages["client_public_key"] = client_public_key
-        # g._messages["client_shared_key"] = request.json['shared_key']
-
         shared_key = edh.get_shared_key(client_public_key)
         return shared_key, 200
 
