@@ -14,6 +14,7 @@ class Utils():
         path,
         params="",
         data="",
+        token="",
         header={'content-type': 'application/json'}
     ):
         """
@@ -29,6 +30,7 @@ class Utils():
             tuple -- Response to url and http code
         """
         full_path = f"{self.base_url}{path}"
+        header['X-API-KEY'] = token
         if method.upper() in requests.options(full_path).headers['allow']:
             response = getattr(requests, method.lower())(
                 full_path,

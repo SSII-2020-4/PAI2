@@ -45,7 +45,10 @@ class ServerUtils():
         nonce_bytes = str.encode(str(nonce))
 
         digest_maker = hmac.new(
-            key_bytes, msg=message_bytes, digestmod=algorithm)
+            key_bytes,
+            msg=message_bytes,
+            digestmod=algorithm
+        )
         digest_maker.update(nonce_bytes)
         digest_maker.hexdigest()
         return digest_maker.hexdigest()
@@ -110,11 +113,11 @@ class ServerUtils():
         if (not is_integrity_violated):
             res = "Se ha mantenido la integridad del mensaje. " + \
                 "Tasa de acierto en la transferencia: " + \
-                str(rate) + "%", 200
+                str("{0:.2f}".format(rate)) + "%", 200
         else:
             res = "La integridad del mensaje se ha visto comprometido. " + \
                 "Tasa de acierto en la transferencia: " + \
-                str(rate) + " %", 500
+                str("{0:.2f}".format(rate)) + " %", 400
 
         return res
 
@@ -126,23 +129,28 @@ class ServerUtils():
         if(length < 32):
             res = {"message": 'Invalid nonce length'}, 400
         else:
-            res = {"nonce": secrets.token_hex(floor(length))}, 200
-            nonces_file = "server-nonces.txt"
-            if not os.path.exists(nonces_file):
-                os.mknod(nonces_file)
-            with open(nonces_file, 'r') as f:
+            nonce = secrets.token_hex(floor(length))
+            nonces_file = "server-generate-nonces.txt"
+            res = self.check_nonce(nonce, nonces_file, length)
+        return res
+
+    def check_nonce(self, nonce, nonces_file="server-received-nonces.txt", length=32):
+        res = {"nonce": nonce}, 200
+        if not os.path.exists(nonces_file):
+            os.mknod(nonces_file)
+        with open(nonces_file, 'r') as f:
+            linea = f.readline()
+            aux = True
+            while linea != "":
+                if(linea.strip() == nonce):
+                    aux = False
+                    break
                 linea = f.readline()
-                aux = True
-                while linea != "":
-                    if(linea == res[0]["nonce"]+"\n"):
-                        aux = False
-                        break
-                    linea = f.readline()
-                if(aux):
-                    f = open(nonces_file, "a")
-                    f.write(res[0]["nonce"]+"\n")
-                else:
-                    res = {"message": 'Used nonce'}, 401
+            if(aux):
+                f = open(nonces_file, "a")
+                f.write(nonce + "\n")
+            else:
+                res = {"message": 'Used nonce'}, 401
         return res
 
 
@@ -175,20 +183,23 @@ class EDH():
 
     def get_public_key(self):
         public_key = self.__private_key.public_key()
-        return public_key.public_bytes(
+        public_key = public_key.public_bytes(
             Encoding.PEM,
             PublicFormat.SubjectPublicKeyInfo
         )
+        return public_key
 
-    def get_shared_key(self, client_public_key):
-        client_public_key = load_pem_public_key(
+    def get_shared_key(self, server_public_key):
+        server_public_key = load_pem_public_key(
             str.encode(
-                client_public_key.replace('\"', "").replace("\\n", "\n")
+                server_public_key.replace('\"', "").replace("\\n", "\n")
             ),
             default_backend()
         )
-
-        return self.__private_key.exchange(client_public_key).hex()
+        self.shared_key = self.__private_key.exchange(
+            server_public_key
+        ).hex()
+        return self.shared_key
 
     def get_full_key(self, shared_key):
         shared_key = str.encode(

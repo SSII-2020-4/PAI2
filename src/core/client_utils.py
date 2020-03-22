@@ -1,5 +1,6 @@
 import hashlib
 import hmac
+import json
 import os
 import secrets
 from math import floor
@@ -43,7 +44,10 @@ class ClientUtils():
         nonce_bytes = str.encode(str(nonce))
 
         digest_maker = hmac.new(
-            key_bytes, msg=message_bytes, digestmod=algorithm)
+            key_bytes,
+            msg=message_bytes,
+            digestmod=algorithm
+        )
         digest_maker.update(nonce_bytes)
         digest_maker.hexdigest()
         return digest_maker.hexdigest()
@@ -56,23 +60,28 @@ class ClientUtils():
         if(length < 32):
             res = {"message": 'Invalid nonce length'}, 400
         else:
-            res = {"nonce": secrets.token_hex(floor(length))}, 200
-            nonces_file = "client-nonces.txt"
-            if not os.path.exists(nonces_file):
-                os.mknod(nonces_file)
-            with open(nonces_file, 'r') as f:
+            nonce = secrets.token_hex(floor(length))
+            nonces_file = "client-generate-nonces.txt"
+            res = self.check_nonce(nonce, nonces_file, length)
+        return res
+
+    def check_nonce(self, nonce, nonces_file="client-received-nonces.txt", length=32):
+        res = {"nonce": nonce}, 200
+        if not os.path.exists(nonces_file):
+            os.mknod(nonces_file)
+        with open(nonces_file, 'r') as f:
+            linea = f.readline()
+            aux = True
+            while linea != "":
+                if(linea.strip() == nonce):
+                    aux = False
+                    break
                 linea = f.readline()
-                aux = True
-                while linea != "":
-                    if(linea == res[0]["nonce"]+"\n"):
-                        aux = False
-                        break
-                    linea = f.readline()
-                if(aux):
-                    f = open(nonces_file, "a")
-                    f.write(res[0]["nonce"]+"\n")
-                else:
-                    res = {"message": 'Used nonce'}, 401
+            if(aux):
+                f = open(nonces_file, "a")
+                f.write(nonce + "\n")
+            else:
+                res = {"message": 'Used nonce'}, 401
         return res
 
 
@@ -102,13 +111,15 @@ class EDH():
                     default_backend()
                 )
         self.__private_key = self.__parameters.generate_private_key()
+        self.__full_key = None
 
     def get_public_key(self):
         public_key = self.__private_key.public_key()
-        return public_key.public_bytes(
+        public_key = public_key.public_bytes(
             Encoding.PEM,
             PublicFormat.SubjectPublicKeyInfo
         )
+        return public_key
 
     def get_shared_key(self, server_public_key):
         server_public_key = load_pem_public_key(
@@ -117,48 +128,57 @@ class EDH():
             ),
             default_backend()
         )
-        self.shared_key = self.__private_key.exchange(server_public_key).hex()
+        self.shared_key = self.__private_key.exchange(
+            server_public_key
+        ).hex()
         return self.shared_key
 
     def get_full_key(self, shared_key):
         shared_key = str.encode(
             shared_key.replace("\"", "").replace("\n", "")
         )
-        full_key = HKDF(
+        self.__full_key = HKDF(
             algorithm=hashes.SHA256(),
             length=32,
             salt=None,
             info=None,
             backend=default_backend()
         ).derive(shared_key)
-        return full_key
+        return self.__full_key
 
-    def exchange_keys(self):
+    def exchange_keys(self, token):
         utils = Utils()
-        # Intercambio de claves
-        #################
-        # Clave pública #
-        #################
-        server_public_key = utils.api_request(
-            "post",
-            "server/public_key",
-        )[0]
+        if self.__full_key is not None:
+            res = self.__full_key
+        else:
+            # Intercambio de claves
+            #################
+            # Clave pública #
+            #################
+            server_public_key = json.loads(utils.api_request(
+                "get",
+                "server/public_key",
+                token=token
+            )[0])['public_key']
 
-        ####################
-        # Clave compartida #
-        ####################
-        client_shared_key = self.get_shared_key(server_public_key)
-        data = {
-            "public_key": self.get_public_key().decode('ascii'),
-            "shared_key": client_shared_key,
-        }
-        server_shared_key = utils.api_request(
-            "post",
-            "server/shared_key",
-            data=data
-        )[0]
+            ####################
+            # Clave compartida #
+            ####################
+            client_shared_key = self.get_shared_key(server_public_key)
+            data = {
+                "public_key": self.get_public_key().decode('ascii'),
+                "shared_key": client_shared_key,
+            }
+            server_shared_key = json.loads(utils.api_request(
+                "post",
+                "server/shared_key",
+                data=data,
+                token=token,
+            )[0])["shared_key"]
 
-        ##################
-        # Clave completa #
-        ##################
-        return self.get_full_key(server_shared_key)
+            ##################
+            # Clave completa #
+            ##################
+            res = self.get_full_key(server_shared_key)
+
+        return res
