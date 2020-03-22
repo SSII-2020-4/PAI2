@@ -170,11 +170,15 @@ class Message(Resource):
         # Simulación de parámetros.
         nonce = request.json["nonce"]
         MAC = request.json["MAC"]
+        unique_nonce = client.check_nonce(nonce)
 
-        mac_calculated = client.calculate_mac(full_key, message, nonce)
-        integrity_violated = str(MAC) != str(mac_calculated)
-        if not integrity_violated:
-            res = {"message": message}, 200
+        if(unique_nonce[1] == 200):
+            mac_calculated = client.calculate_mac(full_key, message, nonce)
+            integrity_violated = str(MAC) != str(mac_calculated)
+            if not integrity_violated:
+                res = {"message": message}, 200
+            else:
+                res = {"message": "Integrity violation from server to me"}, 400
         else:
-            res = {"message": "Integrity violation from server to me"}, 400
+            res = {"message": "Not unique nonce. Possible replay attack."}, 400
         return res
