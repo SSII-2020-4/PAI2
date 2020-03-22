@@ -108,6 +108,7 @@ class PublicKeyTransfer(Resource):
 
 
 @api.route('/send_message')
+@api.response(401, "Not Authorized")
 class Message(Resource):
     @api.doc(description="Manda un mensaje sobre una transacción",
              security='apikey',
@@ -126,7 +127,6 @@ class Message(Resource):
         if request.headers['X-API-KEY']:
             token = request.headers['X-API-KEY']
         full_key = edh.exchange_keys(token)
-        # full_key = 1234
 
         # Simulación de parámetros.
         nonce = client.gen_nonce()[0]['nonce']
@@ -165,7 +165,6 @@ class Message(Resource):
         message = request.json["message"]
         # Intercambio de claves
         full_key = edh.get_full_key(request.json["shared_key"])
-        # full_key = 1234
 
         # Simulación de parámetros.
         nonce = request.json["nonce"]

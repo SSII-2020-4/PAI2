@@ -96,7 +96,7 @@ utils = Utils()
 
 @api.route("/public_key")
 @api.hide
-# @api.response(401, "Not Authorized")
+@api.response(401, "Not Authorized")
 class PublicKeyTransfer(Resource):
     @api.doc(description="Clave compartida",
              security='apikey',
@@ -111,7 +111,7 @@ class PublicKeyTransfer(Resource):
 
 @api.route("/shared_key")
 @api.hide
-# @api.response(401, "Not Authorized")
+@api.response(401, "Not Authorized")
 class SharedKeyTransfer(Resource):
     @api.doc(description="Clave pública",
              security='apikey',
@@ -128,6 +128,7 @@ class SharedKeyTransfer(Resource):
 
 @api.route("/receive_message")
 @api.hide
+@api.response(401, "Not Authorized")
 class Message(Resource):
     @api.doc(description="Recibe un mensaje sobre una transacción",
              security='apikey',
@@ -144,7 +145,6 @@ class Message(Resource):
 
         # Intercambio de claves
         full_key = edh.get_full_key(request.json["shared_key"])
-        # full_key = 1234
 
         # Simulación de parámetros.
         nonce = request.json["nonce"]
