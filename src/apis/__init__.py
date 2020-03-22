@@ -3,8 +3,9 @@ from .cliente import api as api_client
 from .servidor import api as api_server
 
 api = Api(
-    title="PAI1",
-    description="Proof of Possession",
+    title="PAI2",
+    description="Simulación del canal de comunicación" +
+    " entre cliente y servidor",
     version="1.0",
 )
 
