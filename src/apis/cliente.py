@@ -1,10 +1,11 @@
+import json
 import os
 from functools import wraps
 
 from flask import request
 from flask_restplus import Namespace, Resource, fields
 
-from core.client_utils import ClientUtils, EDH
+from core.client_utils import EDH, ClientUtils
 from core.common_utils import Utils
 
 authorizations = {
@@ -14,11 +15,10 @@ authorizations = {
         'name': 'X-API-KEY',
     }
 }
-
 api = Namespace(
     'client',
     description='Simulación del cliente',
-    # authorizations=authorizations
+    authorizations=authorizations
 )
 
 model_public_key = api.model(
@@ -37,8 +37,22 @@ model_shared_key = api.model(
     }
 )
 
+message_from_server = api.model(
+    'Data', {
+        'message': fields.String(
+            required=True,
+            description="Message from server"),
+        'MAC': fields.String(
+            required=True,
+            description="Message Authentication Code from server"),
+        'nonce': fields.Integer(
+            required=True,
+            description="Random number used once"),
+    }
+)
+
 model_message = api.model(
-    'Message', {
+    'clientMessage', {
         'cuenta_origen': fields.String(
             required=True,
             description="Cuenta origen"),
@@ -80,40 +94,43 @@ edh = EDH()
 
 @api.route("/public_key")
 @api.hide
-# @api.response(401, "Not Authorized")
+@api.response(401, "Not Authorized")
 class PublicKeyTransfer(Resource):
     @api.doc(description="Clave pública",
              security='apikey',
              responses={
                  200: "Clave pública generada",
              })
-    @api.expect(model_public_key)
-    def post(self):
+    @token_required
+    def get(self):
         public_key = edh.get_public_key()
-        return public_key.decode('ascii')
+        return {"public_key": public_key.decode('ascii')}
 
 
-@api.route('/message')
+@api.route('/send_message')
 class Message(Resource):
-    @api.expect(model_message)
     @api.doc(description="Manda un mensaje sobre una transacción",
              security='apikey',
              responses={
                  200: "El mensaje ha sido recibido con éxito",
                  405: "Método no permitido",
-                 500: "La integridad del mensaje se ha visto comprometida"
+                 400: "La integridad del mensaje se ha visto comprometida"
              })
+    @token_required
+    @api.expect(model_message)
     def post(self):
         client = ClientUtils()
         message = str(request.json)
 
-        # Intercambio de
-        full_key = edh.exchange_keys()
+        # Intercambio de claves
+        if request.headers['X-API-KEY']:
+            token = request.headers['X-API-KEY']
+        full_key = edh.exchange_keys(token)
+        # full_key = 1234
 
         # Simulación de parámetros.
-        nonce = client.gen_nonce()[0]
-
-        MAC = client.calculate_mac(nonce, message, full_key)
+        nonce = client.gen_nonce()[0]['nonce']
+        MAC = client.calculate_mac(full_key, message, nonce)
         data = {
             "message": message,
             "MAC": MAC,
@@ -123,8 +140,41 @@ class Message(Resource):
 
         response = utils.api_request(
             "post",
-            "server/message",
-            data=data
+            "server/receive_message",
+            data=data,
+            token=token
         )
 
-        return response
+        return json.loads(response[0]), response[1]
+
+
+@api.route("/receive_message")
+@api.hide
+class Message(Resource):
+    @api.doc(description="Recibe un mensaje sobre una transacción",
+             security='apikey',
+             responses={
+                 200: "El mensaje ha sido recibido con éxito",
+                 405: "Método no permitido",
+                 400: "La integridad del mensaje se ha visto comprometida"
+             })
+    @api.expect(message_from_server)
+    @token_required
+    def post(self):
+        client = ClientUtils()
+        message = request.json["message"]
+        # Intercambio de claves
+        full_key = edh.get_full_key(request.json["shared_key"])
+        # full_key = 1234
+
+        # Simulación de parámetros.
+        nonce = request.json["nonce"]
+        MAC = request.json["MAC"]
+
+        mac_calculated = client.calculate_mac(full_key, message, nonce)
+        integrity_violated = str(MAC) != str(mac_calculated)
+        if not integrity_violated:
+            res = {"message": message}, 200
+        else:
+            res = {"message": "Integrity violation from server to me"}, 400
+        return res
