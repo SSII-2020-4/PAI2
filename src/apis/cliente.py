@@ -178,7 +178,8 @@ class Message(Resource):
             if not integrity_violated:
                 res = {"message": message}, 200
             else:
-                res = {"message": "Integrity violation from server to me"}, 400
+                # res = {"message": "Integrity violation from server to me"}, 400
+                res = {"message": message}, 400
         else:
             res = {"message": "Not unique nonce. Possible replay attack."}, 400
         return res

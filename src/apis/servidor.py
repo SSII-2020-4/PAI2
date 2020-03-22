@@ -153,13 +153,16 @@ class Message(Resource):
 
         mac_calculated = server.calculate_mac(full_key, message, nonce)
 
-        integrity_violated = str(MAC) != str(mac_calculated) 
-        
+        integrity_violated = str(MAC) != str(mac_calculated)
+
         if(unique_nonce[1] != 200):
             integrity_violated = True
         # Envia mensaje de confirmación al cliente
         message = server.get_transference_rate(integrity_violated, message)
         message = message[0]
+
+        if(unique_nonce[1] != 200):
+            message += "\nNot unique nonce. Possible replay attack in server."
         nonce = server.gen_nonce()[0]['nonce']
         MAC = server.calculate_mac(full_key, message, nonce)
         data = {
