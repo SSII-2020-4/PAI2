@@ -149,10 +149,14 @@ class Message(Resource):
         # Simulación de parámetros.
         nonce = request.json["nonce"]
         MAC = request.json["MAC"]
+        unique_nonce = server.check_nonce(nonce)
+
         mac_calculated = server.calculate_mac(full_key, message, nonce)
 
-        integrity_violated = str(MAC) != str(mac_calculated)
-
+        integrity_violated = str(MAC) != str(mac_calculated) 
+        
+        if(unique_nonce[1] != 200):
+            integrity_violated = True
         # Envia mensaje de confirmación al cliente
         message = server.get_transference_rate(integrity_violated, message)
         message = message[0]
@@ -175,46 +179,3 @@ class Message(Resource):
         )
 
         return json.loads(response[0]), response[1]
-
-
-@api.route('/send_message')
-@api.hide
-class Message(Resource):
-    @api.expect(message)
-    @api.doc(description="Manda un mensaje sobre una transacción",
-             security='apikey',
-             responses={
-                 200: "El mensaje ha sido recibido con éxito",
-                 405: "Método no permitido",
-                 400: "La integridad del mensaje se ha visto comprometida"
-             })
-    @token_required
-    def post(self):
-        server = ServerUtils()
-        message = str(request.json)
-
-        # Intercambio de claves
-        full_key = edh.exchange_keys()
-
-        # Simulación de parámetros.
-        nonce = server.gen_nonce()[0]
-
-        MAC = server.calculate_mac(full_key, message, nonce)
-        data = {
-            "message": message,
-            "MAC": MAC,
-            "nonce": nonce,
-            "shared_key": edh.shared_key
-        }
-
-        if request.headers['X-API-KEY']:
-            token = request.headers['X-API-KEY']
-
-        response = utils.api_request(
-            "post",
-            "server/message",
-            data=data,
-            token=token
-        )
-
-        return response

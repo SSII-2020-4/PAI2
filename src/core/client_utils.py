@@ -62,10 +62,10 @@ class ClientUtils():
         else:
             nonce = secrets.token_hex(floor(length))
             nonces_file = "client-generate-nonces.txt"
-            res = self.check_nonce(length, nonce, nonces_file)
+            res = self.check_nonce(nonce, nonces_file, length)
         return res
 
-    def check_nonce(self, length, nonce, nonces_file):
+    def check_nonce(self, nonce, nonces_file="client-received-nonces.txt", length=32):
         res = {"nonce": nonce}, 200
         if not os.path.exists(nonces_file):
             os.mknod(nonces_file)
