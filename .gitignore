@@ -150,4 +150,4 @@ hashes.json
 *backup
 *.log*
 
-client-nonces.txt
+*.txt
