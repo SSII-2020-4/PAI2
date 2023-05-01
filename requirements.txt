@@ -1,4 +1,4 @@
-flask==1.1.1
+flask==2.3.2
 flask-restplus==0.13.0
 Werkzeug==0.16.1
 APScheduler==3.6.3
